@@ -81,10 +81,7 @@ public class MappedByteBufferUtil {
                 return 0;
             }
             return getReadIndex(readOffset, 0, FILE_SIZE / 8, fileChannelOffsetList) + 1;
-        } catch (IOException e) {
-            e.printStackTrace();
-            return 0;
-        } finally {
+        }  finally {
             if (fileChannelOffsetList != null) {
                 fileChannelOffsetList.close();
             }
@@ -160,23 +157,18 @@ public class MappedByteBufferUtil {
 
     public static void getFileIndex(Map<Long, Long> existFile, FileChannel fileChannel, long offset) throws IOException {
         MappedByteBuffer map = null;
-        MappedByteBuffer map1 = null;
         try {
             map = fileChannel.map(FileChannel.MapMode.READ_WRITE, offset, 16);
             long fileOffset = map.getLong();
             long index = map.getLong();
             //连续两次为0说明后面都为0
             if (fileOffset == 0 || index == 0) {
-//                map1 = fileChannel.map(FileChannel.MapMode.READ_WRITE, offset + 16, 16);
-//                if (map1.getLong() == 0 || map1.getLong() == 0) {
-                    return;
-//                }
+                return;
             }
             existFile.put(fileOffset, index);
             getFileIndex(existFile, fileChannel, offset + 16);
         } finally {
             MappedByteBufferUtil.clean(map);
-            MappedByteBufferUtil.clean(map1);
         }
     }
 
