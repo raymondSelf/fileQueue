@@ -22,7 +22,7 @@ import java.util.*;
  */
 public class MappedByteBufferUtil {
 
-    public static final long FILE_SIZE = 1024;
+    public static final long FILE_SIZE = 1024 * 1024 * 1024;
 
     /**
      * 文件名长度
