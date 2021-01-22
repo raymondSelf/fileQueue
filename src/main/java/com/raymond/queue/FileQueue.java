@@ -1,6 +1,8 @@
-package com.raymond.queue.impl;
+package com.raymond.queue;
 
 
+import com.raymond.queue.collection.CollectConsumption;
+import com.raymond.queue.collection.CollectProduction;
 import com.raymond.queue.utils.DateUtil;
 import com.raymond.queue.utils.MappedByteBufferUtil;
 import org.slf4j.Logger;
@@ -34,13 +36,13 @@ public class FileQueue<E> {
     private static final Map<String, FileQueue> TOPIC_MAP = new ConcurrentHashMap<>(16);
 
     public static String DEFAULT_PATH = System.getProperty("user.dir");
-
+    public final boolean isCollect;
     /**
      * 只支持消费
      */
     public static final int IS_CONSUMPTION = 2;
     /**
-     * 只支持生成
+     * 只支持生产
      */
     public static final int IS_PRODUCTION = 1;
     /**
@@ -212,27 +214,45 @@ public class FileQueue<E> {
         this.openProduction = (type & 1) == 1;
         this.openConsumption = (type & 2) == 2;
         this.isOrdinary = queueModel == QueueModel.ORDINARY;
+        this.isCollect = MappedByteBufferUtil.isCollection(eClass);
         initFile(topic);
         if (openProduction) {
-            production = new Production<>(this.path, topic);
+            production = createProduction(this.path, topic);
         }
         if (openConsumption) {
             GrowMode growMode = GrowMode.CONTINUE_OFFSET;
             if (MappedByteBufferUtil.isStrEmpty(groupName) && isOrdinary) {
                 groupName = DEFAULT_GROUP;
             }
-            Consumption<E> eConsumption = new Consumption<>(eClass, this.path, topic, groupName, this, growMode);
+            Consumption<E> eConsumption = createConsumption(eClass, this.path, topic, groupName, this, growMode, "");
             groupMap.put(groupName, eConsumption);
             if (isOrdinary) {
                 consumption = eConsumption;
             }
-            RandomAccessFile accessReadOffset= new RandomAccessFile(path + File.separator + topic + File.separator + groupName + FileType.READ.name, "rw");
+            RandomAccessFile accessReadOffset= new RandomAccessFile(path + File.separator + topic +
+                    File.separator + groupName + FileType.READ.name, "rw");
             FileChannel fileChannelReadOffset = accessReadOffset.getChannel();
             MappedByteBuffer hasReadFileSize = fileChannelReadOffset.map(FileChannel.MapMode.READ_WRITE, 16, 8);
             hasReadFileSizeMap.put(groupName, hasReadFileSize);
         }
         cleanThread();
     }
+
+    private Production<E> createProduction(String path, String topic) throws IOException {
+        if (isCollect) {
+            return new CollectProduction<>(path, topic);
+        }
+        return new Production<>(path, topic);
+    }
+
+    private Consumption createConsumption(Class<E> eClass, String path, String topic, String groupName,
+                                          FileQueue<E> fileQueue, FileQueue.GrowMode growMode, String srcGroupName) throws Exception {
+        if (isCollect) {
+            return new CollectConsumption(eClass, path, topic, groupName, this, growMode, srcGroupName);
+        }
+        return new Consumption<>(eClass, path, topic, groupName, this, growMode, srcGroupName);
+    }
+
 
     private void initFile(String topic) {
         logger.info("初始化文件");
@@ -340,9 +360,10 @@ public class FileQueue<E> {
             if (groupMap.containsKey(groupName)) {
                 return groupMap.get(groupName);
             }
-            Consumption<E> eConsumption = new Consumption<>(eClass, this.path, topic, groupName, this, growMode, srcGroupName);
+            Consumption<E> eConsumption = createConsumption(eClass, this.path, topic, groupName, this, growMode, srcGroupName);
             groupMap.put(groupName, eConsumption);
-            RandomAccessFile accessReadOffset= new RandomAccessFile(path + File.separator + topic + File.separator + groupName + FileType.READ.name, "rw");
+            RandomAccessFile accessReadOffset= new RandomAccessFile(path + File.separator + topic +
+                    File.separator + groupName + FileType.READ.name, "rw");
             FileChannel fileChannelReadOffset = accessReadOffset.getChannel();
             MappedByteBuffer hasReadFileSize = fileChannelReadOffset.map(FileChannel.MapMode.READ_WRITE, 16, 8);
             hasReadFileSizeMap.put(groupName, hasReadFileSize);
@@ -359,7 +380,7 @@ public class FileQueue<E> {
             throw new RuntimeException("没有开启生产者，不支持生产");
         }
         if (this.production == null) {
-            this.production = new Production<>(this.path, this.topic);
+            this.production = createProduction(this.path, this.topic);
             this.openProduction = true;
         }
         return this.production;
@@ -425,17 +446,12 @@ public class FileQueue<E> {
         return consumption.poll();
     }
 
-
     public void put(E e) {
         if (!openProduction) {
             throw new RuntimeException("没有开启生产者，不支持生产");
         }
         production.put(e);
     }
-
-
-
-
 
     public int size() {
         if (!isOrdinary) {
@@ -476,18 +492,6 @@ public class FileQueue<E> {
         return list;
     }
 
-    /**
-     * 获取当前buffer的值(long类型)
-     * @param buffer buffer
-     * @return 读取的值
-     */
-    private long getLongFromBuffer(MappedByteBuffer buffer) {
-        if (!buffer.hasRemaining()) {
-            buffer.flip();
-        }
-        return buffer.getLong();
-
-    }
 
 
     private void cleanThread() {
@@ -531,7 +535,7 @@ public class FileQueue<E> {
         name = name.substring(0, name.lastIndexOf("."));
         for (MappedByteBuffer value : hasReadFileSizeMap.values()) {
             //已读上个文件最大的offset
-            long hasReadFileSize = getLongFromBuffer(value);
+            long hasReadFileSize = MappedByteBufferUtil.getLongFromBuffer(value);
             if (hasReadFileSize < Long.parseLong(name)) {
                 logger.info("此文件还未消费,不予许删除,文件名:" + file.getName());
                 return;

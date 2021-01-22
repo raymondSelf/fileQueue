@@ -1,7 +1,9 @@
-package com.raymond.queue.impl;
+package com.raymond.queue;
 
-import com.alibaba.fastjson.JSONObject;
+import com.dyuproject.protostuff.LinkedBuffer;
+import com.raymond.queue.collection.CollectionEntry;
 import com.raymond.queue.utils.MappedByteBufferUtil;
+import com.raymond.queue.utils.ProtostuffUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -51,6 +53,11 @@ public class Production<E> {
     private final Map<String, FileChannel> fileChannelMap = new HashMap<>();
 
     private final Map<String, MappedByteBuffer> mappedByteBufferMap = new HashMap<>();
+
+    /**
+     * 避免每次序列化都重新申请Buffer空间
+     */
+    protected final LinkedBuffer buffer = LinkedBuffer.allocate(LinkedBuffer.DEFAULT_BUFFER_SIZE);
     /**
      * 存在的索引文件对应的index
      * 索引文件名,对应第一条的index
@@ -106,7 +113,7 @@ public class Production<E> {
     /** 写锁 */
     private final ReentrantLock writeLock = new ReentrantLock();
 
-    Production(String path, String topic) throws IOException {
+    protected Production(String path, String topic) throws IOException {
         this.path = path;
         this.topic = topic;
         initFile(topic);
@@ -239,18 +246,23 @@ public class Production<E> {
         final ReentrantLock lock = this.writeLock;
         lock.lock();
         try {
-            log(JSONObject.toJSONString(e));
+//            log(JSONObject.toJSONString(e).getBytes());
+//            log(ProtostuffUtils.serializer(e, buffer));
+            log(getBytes(e));
         } finally {
             lock.unlock();
         }
+    }
+
+    protected byte[] getBytes(E e) {
+        return ProtostuffUtils.serializer(e, buffer);
     }
 
     /**
      * 将队列数据写文件
      * @param log 需要写的数据
      */
-    private void log(String log) {
-        byte[] bytes = log.getBytes();
+    private void log(byte[] bytes) {
         long offset = writeOffset.get() + bytes.length;
         if (offset > writeFileSize) {
             logWriteGrow();
@@ -345,9 +357,21 @@ public class Production<E> {
         return writeOffset;
     }
 
-
-
     Map<Long, Long> getExistFile() {
         return existFile;
     }
+
+    static class CollProduction<E> extends Production<E> {
+
+        CollProduction(String path, String topic) throws IOException {
+            super(path, topic);
+        }
+
+        @Override
+        protected byte[] getBytes(E e) {
+            return ProtostuffUtils.serializer(new CollectionEntry<>(e), super.buffer);
+        }
+    }
+
+
 }

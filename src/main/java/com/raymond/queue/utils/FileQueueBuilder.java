@@ -1,6 +1,6 @@
 package com.raymond.queue.utils;
 
-import com.raymond.queue.impl.FileQueue;
+import com.raymond.queue.FileQueue;
 
 /**
  * 构建文件队列

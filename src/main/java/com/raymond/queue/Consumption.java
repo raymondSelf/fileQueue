@@ -1,8 +1,8 @@
-package com.raymond.queue.impl;
+package com.raymond.queue;
 
 
-import com.alibaba.fastjson.JSONObject;
 import com.raymond.queue.utils.MappedByteBufferUtil;
+import com.raymond.queue.utils.ProtostuffUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +20,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 消费者
- * todo 消费组使用LAST_OFFSET模式创建时,并在多进程下有很小的概率出现问题
+ *
  * @author :  raymond
  * @version :  V1.0
  * @date :  2021-01-11 10:41
@@ -124,11 +124,13 @@ public class Consumption<E> {
     /** 读锁 **/
     private final ReentrantLock readLock = new ReentrantLock();
 
-    Consumption(Class<E> eClass, String path, String topic, String groupName, FileQueue<E> fileQueue, FileQueue.GrowMode growMode) throws Exception {
+    Consumption(Class<E> eClass, String path, String topic, String groupName, FileQueue<E> fileQueue,
+                FileQueue.GrowMode growMode) throws Exception {
         this(eClass, path, topic, groupName, fileQueue, growMode, "");
     }
 
-    Consumption(Class<E> eClass, String path, String topic, String groupName, FileQueue<E> fileQueue, FileQueue.GrowMode growMode, String srcGroupName) throws Exception {
+    protected Consumption(Class<E> eClass, String path, String topic, String groupName, FileQueue<E> fileQueue,
+                          FileQueue.GrowMode growMode, String srcGroupName) throws Exception {
         if (MappedByteBufferUtil.isStrEmpty(groupName)) {
             throw new RuntimeException("消费组的名称不能为空,请输入消费组的名称");
         }
@@ -202,7 +204,8 @@ public class Consumption<E> {
             readFileSize = MappedByteBufferUtil.getLongFromBuffer(readFileSizeMap);
         }
         long hasReadFileSize = MappedByteBufferUtil.getLongFromBuffer(hasReadFileSizeMap);
-        bufReadLog = fileChannelMap.get(readLogKey + ":" + topic).map(FileChannel.MapMode.READ_WRITE, readOffset.get() - hasReadFileSize,
+        bufReadLog = fileChannelMap.get(readLogKey + ":" + topic)
+                .map(FileChannel.MapMode.READ_WRITE, readOffset.get() - hasReadFileSize,
                 readFileSize - readOffset.get());
         mappedByteBufferMap.put(readLogKey + ":" + topic, bufReadLog);
 
@@ -297,7 +300,8 @@ public class Consumption<E> {
         try {
             readLock.lock();
             String path = this.path + File.separator + topic + File.separator;
-            Files.copy(Paths.get(path + srcGroupName + FileQueue.FileType.READ.name), Paths.get(path + groupName + FileQueue.FileType.READ.name), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(Paths.get(path + srcGroupName + FileQueue.FileType.READ.name),
+                    Paths.get(path + groupName + FileQueue.FileType.READ.name), StandardCopyOption.REPLACE_EXISTING);
         } finally {
             readLock.unlock();
         }
@@ -333,7 +337,8 @@ public class Consumption<E> {
             MappedByteBufferUtil.putLongToBuffer(hasReadFileSizeMap, hasReadFileSize);
             readFileSize = hasReadFileSize + MappedByteBufferUtil.FILE_SIZE;
             MappedByteBufferUtil.putLongToBuffer(readFileSizeMap, readFileSize);
-            bufReadLog = fileChannelMap.get(readLogKey + ":" + topic).map(FileChannel.MapMode.READ_WRITE, readOffset.get() - hasReadFileSize,
+            bufReadLog = fileChannelMap.get(readLogKey + ":" + topic)
+                    .map(FileChannel.MapMode.READ_WRITE, readOffset.get() - hasReadFileSize,
                     readFileSize - readOffset.get());
             mappedByteBufferMap.put(readLogKey + ":" + topic, bufReadLog);
             try {
@@ -454,7 +459,13 @@ public class Consumption<E> {
         byte[] bytes = new byte[len];
         bufReadLog.get(bytes, 0, len);
         readOffset.addAndGet(len);
-        return JSONObject.parseObject(bytes, eClass);
+//        return JSONObject.parseObject(bytes, eClass);
+//        return ProtostuffUtils.deserializer(bytes, eClass);
+        return getData(bytes);
+    }
+
+    protected E getData(byte[] bytes) {
+        return ProtostuffUtils.deserializer(bytes, eClass);
     }
 
     /**
@@ -464,7 +475,8 @@ public class Consumption<E> {
     private void logReadGrow(long readOffsetListLong) {
         try {
             fileGrow(topic, false, readOffsetListLong, readLogKey, FileQueue.FileType.LOG);
-            bufReadLog = fileChannelMap.get(readLogKey + ":" + topic).map(FileChannel.MapMode.READ_WRITE, 0, MappedByteBufferUtil.FILE_SIZE);
+            bufReadLog = fileChannelMap.get(readLogKey + ":" + topic)
+                    .map(FileChannel.MapMode.READ_WRITE, 0, MappedByteBufferUtil.FILE_SIZE);
             readFileSize = MappedByteBufferUtil.FILE_SIZE + readOffset.get();
             MappedByteBufferUtil.putLongToBuffer(hasReadFileSizeMap, readOffset.get());
             MappedByteBufferUtil.putLongToBuffer(readFileSizeMap, readFileSize);
@@ -477,7 +489,8 @@ public class Consumption<E> {
     private void offsetListReadGrow() {
         try {
             fileGrow(topic, false, readOffset.get(), readOffsetListKey, FileQueue.FileType.OFFSET_LIST);
-            bufReadOffsetList = fileChannelMap.get(readOffsetListKey + ":" + topic).map(FileChannel.MapMode.READ_WRITE, 0, MappedByteBufferUtil.FILE_SIZE);
+            bufReadOffsetList = fileChannelMap.get(readOffsetListKey + ":" + topic)
+                    .map(FileChannel.MapMode.READ_WRITE, 0, MappedByteBufferUtil.FILE_SIZE);
             readOffsetSize += offsetSize;
             MappedByteBufferUtil.putLongToBuffer(hasReadIndexMap, readIndex);
         } catch (Exception e) {
@@ -602,4 +615,5 @@ public class Consumption<E> {
             return (this.production = fileQueue.getProduction()) != null;
         }
     }
+
 }

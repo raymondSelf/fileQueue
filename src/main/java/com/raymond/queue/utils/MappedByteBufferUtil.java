@@ -1,6 +1,6 @@
 package com.raymond.queue.utils;
 
-import com.raymond.queue.impl.FileQueue;
+import com.raymond.queue.FileQueue;
 import sun.misc.Cleaner;
 
 import java.io.File;
@@ -223,6 +223,21 @@ public class MappedByteBufferUtil {
 
     public static boolean isStrEmpty(CharSequence str) {
         return str == null || str.length() == 0;
+    }
+
+    /**
+     * 是否是集合类型
+     * @param eClass 类型
+     * @return true 是集合
+     */
+    public static boolean isCollection(Class<?> eClass) {
+        if (List.class.isAssignableFrom(eClass)) {
+            return true;
+        }
+        if (Set.class.isAssignableFrom(eClass)) {
+            return true;
+        }
+        return Map.class.isAssignableFrom(eClass);
     }
 
 }
