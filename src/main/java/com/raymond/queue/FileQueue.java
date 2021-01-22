@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
  */
 @SuppressWarnings("all")
 public class FileQueue<E> {
-    private final static Logger logger = LoggerFactory.getLogger(Consumption.class);
+    private final static Logger logger = LoggerFactory.getLogger(FileQueue.class);
     /**
      * 文件绝对地址对应的文件队列
      * key:文件绝对地址
