@@ -85,11 +85,26 @@ public class FileQueue<E> {
 
     public static final String DEFAULT_GROUP = "defaultGroup";
 
-
+    /**
+     * 创建普通队列模式
+     * @param eClass 队列类型
+     * @param topic 主题
+     * @param <T> 泛型
+     * @return 文件队列
+     * @throws Exception 异常
+     */
     public static <T> FileQueue<T> ordinary(Class<T> eClass, String topic) throws Exception {
         return instantiation(eClass, DEFAULT_PATH, topic, DEFAULT_GROUP, QueueModel.ORDINARY);
     }
 
+    /**
+     * 创建发布订阅模式
+     * @param eClass 队列类型
+     * @param topic 主题
+     * @param <T> 泛型
+     * @return 文件队列
+     * @throws Exception 异常
+     */
     public static <T> FileQueue<T> subscribe(Class<T> eClass, String topic, String groupName) throws Exception {
         return instantiation(eClass, DEFAULT_PATH, topic, groupName, QueueModel.SUBSCRIBE);
     }
@@ -142,12 +157,20 @@ public class FileQueue<E> {
         }
     }
 
+    /**
+     * 程序退出监听
+     */
     private static void exit() {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             TOPIC_MAP.forEach((k,v) -> oneExit(v));
         }));
     }
 
+    /**
+     * 每个主题退出
+     * @param fileQueue 主题的文件队列
+     * @param <E>
+     */
     private static <E> void oneExit(FileQueue<E> fileQueue) {
         try {
             long timeMillis = System.currentTimeMillis();
@@ -165,12 +188,18 @@ public class FileQueue<E> {
 
     /**
      * 运行心跳机制
+     * 多进程下只能有一个消费组
      */
     private static void runHeartbeat() {
         heartbeatPoolExecutor.scheduleAtFixedRate(() -> TOPIC_MAP.forEach((k, v) -> heartbeat(v)),
                 0, 10000, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * 设置运行心跳
+     * @param fileQueue 文件队列
+     * @param <E>
+     */
     private static <E> void heartbeat(FileQueue<E> fileQueue) {
         try {
             long timeMillis = System.currentTimeMillis();
@@ -588,6 +617,7 @@ public class FileQueue<E> {
     public enum QueueModel {
         /**
          * 普通队列
+         * 在多进程下无法会改成发布订阅
          */
         ORDINARY,
         /**

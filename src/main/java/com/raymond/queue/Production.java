@@ -361,17 +361,6 @@ public class Production<E> {
         return existFile;
     }
 
-    static class CollProduction<E> extends Production<E> {
-
-        CollProduction(String path, String topic) throws IOException {
-            super(path, topic);
-        }
-
-        @Override
-        protected byte[] getBytes(E e) {
-            return ProtostuffUtils.serializer(new CollectionEntry<>(e), super.buffer);
-        }
-    }
 
 
 }
