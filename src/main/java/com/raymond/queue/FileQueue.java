@@ -55,9 +55,9 @@ public class FileQueue<E> {
      */
     public static final int IS_LAZY = 0;
 
-    private static final ScheduledThreadPoolExecutor heartbeatPoolExecutor = javaDbScheduledThreadExecutor("heartbeatThread");
+    private static final ScheduledThreadPoolExecutor heartbeatPoolExecutor = javaScheduledThreadExecutor("heartbeatThread");
 
-    private final ScheduledThreadPoolExecutor cleanPoolExecutor = javaDbScheduledThreadExecutor("cleanFileThread");
+    private final ScheduledThreadPoolExecutor cleanPoolExecutor = javaScheduledThreadExecutor("cleanFileThread");
 
     final Map<String, Consumption<E>> groupMap = new ConcurrentHashMap<>(16);
 
@@ -236,6 +236,8 @@ public class FileQueue<E> {
     }
 
     private FileQueue(Class<E> eClass, String path, String topic, String groupName, QueueModel queueModel, int type) throws Exception {
+        logger.info("创建文件队列中, topic:{}, groupName:{}, 类型:{}, 开启生成者:{}, 开启消费者:{}",
+                topic, groupName, queueModel, (type & 1) == 1, (type & 2) == 2);
         this.eClass = eClass;
         this.path = path;
         this.topic = topic;
@@ -284,7 +286,6 @@ public class FileQueue<E> {
 
 
     private void initFile(String topic) {
-        logger.info("初始化文件");
         String path = this.path + File.separator + topic;
         File file = new File(path);
         if (!file.exists() && !file.mkdirs()) {
@@ -579,7 +580,7 @@ public class FileQueue<E> {
         }
     }
 
-    private static ScheduledThreadPoolExecutor javaDbScheduledThreadExecutor(String threadName) {
+    private static ScheduledThreadPoolExecutor javaScheduledThreadExecutor(String threadName) {
         return new ScheduledThreadPoolExecutor(1, r -> {
             Thread thread = new Thread(r);
             thread.setName(threadName);
