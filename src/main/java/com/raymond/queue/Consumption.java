@@ -441,8 +441,7 @@ public class Consumption<E> {
 
     private E pollFirst() {
         if (readOffset.get() >= writeOffset.get()) {
-            long longFromBuffer = writeFile.getNewWriteOffset();
-            writeOffset.set(longFromBuffer);
+            setWriteOffset();
             if (readOffset.get() >= writeOffset.get()) {
                 return null;
             }
@@ -462,6 +461,19 @@ public class Consumption<E> {
 //        return JSONObject.parseObject(bytes, eClass);
 //        return ProtostuffUtils.deserializer(bytes, eClass);
         return getData(bytes);
+    }
+
+    private void setWriteOffset() {
+        ReentrantLock writeLock = writeFile.getWriteLock();
+        try {
+            writeLock.lock();
+            long longFromBuffer = writeFile.getNewWriteOffset();
+            writeOffset.set(longFromBuffer);
+        } finally {
+            writeLock.unlock();
+        }
+
+
     }
 
     protected E getData(byte[] bytes) {
