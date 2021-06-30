@@ -81,7 +81,7 @@ public class FileQueueBuilder<E> {
     public FileQueue<E> build() throws Exception {
         if (queueModel == FileQueue.QueueModel.SUBSCRIBE && FileQueue.DEFAULT_GROUP.equals(groupName)) {
             if (type == FileQueue.IS_CONSUMPTION || type == FileQueue.IS_ALL) {
-                throw new RuntimeException("发布订阅模式请输入消费组");
+                throw new IllegalArgumentException("参数错误,发布订阅模式请输入消费组");
             }
         }
         return FileQueue.instantiation(eClass, path, topic, groupName, queueModel, growMode, type);
