@@ -8,15 +8,14 @@ import com.raymond.queue.utils.MappedByteBufferUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 队列
@@ -60,8 +59,6 @@ public class FileQueue<E> {
     private final ScheduledThreadPoolExecutor cleanPoolExecutor = javaScheduledThreadExecutor("cleanFileThread");
 
     final Map<String, Consumption<E>> groupMap = new ConcurrentHashMap<>(16);
-
-    private final Map<String, MappedByteBuffer> hasReadFileSizeMap = new ConcurrentHashMap<>(16);
 
     private final Class<E> eClass;
 
@@ -249,6 +246,7 @@ public class FileQueue<E> {
         initFile(topic);
         if (openProduction) {
             production = createProduction(this.path, topic);
+            cleanThread();
         }
         if (openConsumption) {
             GrowMode growMode = GrowMode.CONTINUE_OFFSET;
@@ -260,13 +258,8 @@ public class FileQueue<E> {
             if (isOrdinary) {
                 consumption = eConsumption;
             }
-            RandomAccessFile accessReadOffset= new RandomAccessFile(path + File.separator + topic +
-                    File.separator + groupName + FileType.READ.name, "rw");
-            FileChannel fileChannelReadOffset = accessReadOffset.getChannel();
-            MappedByteBuffer hasReadFileSize = fileChannelReadOffset.map(FileChannel.MapMode.READ_WRITE, 16, 8);
-            hasReadFileSizeMap.put(groupName, hasReadFileSize);
         }
-        cleanThread();
+
     }
 
     private Production<E> createProduction(String path, String topic) throws IOException {
@@ -392,11 +385,10 @@ public class FileQueue<E> {
             }
             Consumption<E> eConsumption = createConsumption(eClass, this.path, topic, groupName, this, growMode, srcGroupName);
             groupMap.put(groupName, eConsumption);
-            RandomAccessFile accessReadOffset= new RandomAccessFile(path + File.separator + topic +
+            RandomAccessFile accessReadOffset = new RandomAccessFile(path + File.separator + topic +
                     File.separator + groupName + FileType.READ.name, "rw");
             FileChannel fileChannelReadOffset = accessReadOffset.getChannel();
             MappedByteBuffer hasReadFileSize = fileChannelReadOffset.map(FileChannel.MapMode.READ_WRITE, 16, 8);
-            hasReadFileSizeMap.put(groupName, hasReadFileSize);
             return eConsumption;
         }
     }
@@ -429,6 +421,8 @@ public class FileQueue<E> {
         if (eConsumption == null) {
             if (existsGroup(groupName)) {
                 return createGroup(groupName,GrowMode.CONTINUE_OFFSET);
+            } else {
+                throw new NullPointerException("当前消费组不存在,请先创建消费组");
             }
         }
         return eConsumption;
@@ -463,7 +457,7 @@ public class FileQueue<E> {
             return eConsumption.poll();
         }
         if (!existsGroup(groupName)) {
-            throw new RuntimeException("当前消费组不存在:" + groupName);
+            throw new NullPointerException("当前消费组不存在:" + groupName);
         }
         return createGroup(groupName, GrowMode.CONTINUE_OFFSET).poll();
     }
@@ -532,7 +526,7 @@ public class FileQueue<E> {
             long initialDelay = parse.getTime() - System.currentTimeMillis();
             cleanPoolExecutor.scheduleAtFixedRate(this::cleanFile, initialDelay, period, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("定时清理文件线程异常:", e);
         }
     }
 
@@ -560,24 +554,88 @@ public class FileQueue<E> {
         }
     }
 
+    /**
+     * 删除已消费文件
+     * @param file 文件
+     */
     private void delFile(File file) {
         String name = file.getName();
         name = name.substring(0, name.lastIndexOf("."));
-        for (MappedByteBuffer value : hasReadFileSizeMap.values()) {
-            //已读上个文件最大的offset
-            long hasReadFileSize = MappedByteBufferUtil.getLongFromBuffer(value);
-            if (hasReadFileSize < Long.parseLong(name)) {
+        try {
+            if (!isCanDel(name)) {
                 logger.info("此文件还未消费,不予许删除,文件名:" + file.getName());
                 return;
             }
+        } catch (IOException e) {
+            logger.error("判断文件是否可以删除异常,文件名:{}", file.getName(), e);
+            return;
         }
         if (file.exists()) {
             if (!file.delete()) {
                 logger.warn("删除文件失败,文件路径:" + path  + ",文件名:" + file.getName());
             }
             logger.info("删除文件路径:" + path + ",文件名:" + file.getName());
-            production.getExistFile().remove(Long.parseLong(name));
+            removeExistFile(name);
         }
+    }
+
+    /**
+     * 判断文件是否消费完
+     * 如果都消费完就可以删除
+     * @param name 最小offset
+     * @return true可以删除
+     * @throws IOException 异常
+     */
+    private boolean isCanDel(String name) throws IOException {
+        List<String> readFile = getReadFile();
+        if (readFile == null || readFile.size() < 1) {
+            return false;
+        }
+        for (String fileName : readFile) {
+            try (RandomAccessFile accessReadOffset = new RandomAccessFile(path + File.separator + topic +
+                    File.separator + fileName, "rw"); FileChannel fileChannelReadOffset = accessReadOffset.getChannel();) {
+                MappedByteBuffer hasReadFileSize = fileChannelReadOffset.map(FileChannel.MapMode.READ_WRITE, 16, 8);
+                long aLong = hasReadFileSize.getLong();
+                MappedByteBufferUtil.clean(hasReadFileSize);
+                if (aLong < Long.parseLong(name)) {
+                    logger.info("当前主题未消费完,主题名称:{},未消费完的消费组名称:{}", topic, fileName.substring(0, fileName.lastIndexOf(".")));
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 获取所有消费组文件名称
+     * @return
+     */
+    private List<String> getReadFile() {
+        File[] files = new File(this.path + File.separator + this.topic).listFiles(new FileFilter() {
+            @Override
+            public boolean accept(File pathname) {
+                return pathname.getName().endsWith(FileType.READ.name);
+            }
+        });
+        if (files == null || files.length < 1) {
+            return null;
+        }
+        List<String> names = new ArrayList<>();
+        for (File file : files) {
+            names.add(file.getName());
+        }
+        return names;
+    }
+
+    private void removeExistFile(String name) {
+        ReentrantLock writeLock = production.getWriteLock();
+        try {
+            writeLock.lock();
+            production.getExistFile().remove(Long.parseLong(name));
+        } finally {
+            writeLock.unlock();
+        }
+
     }
 
     private static ScheduledThreadPoolExecutor javaScheduledThreadExecutor(String threadName) {
