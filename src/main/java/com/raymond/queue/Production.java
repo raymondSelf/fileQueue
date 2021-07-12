@@ -1,16 +1,18 @@
 package com.raymond.queue;
 
 import com.dyuproject.protostuff.LinkedBuffer;
+import com.raymond.queue.utils.DateUtil;
 import com.raymond.queue.utils.MappedByteBufferUtil;
 import com.raymond.queue.utils.ProtostuffUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.*;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -24,6 +26,12 @@ import java.util.concurrent.locks.ReentrantLock;
 @SuppressWarnings("all")
 public class Production<E> {
 
+    private final static Logger logger = LoggerFactory.getLogger(FileQueue.class);
+
+    private final ScheduledThreadPoolExecutor cleanPoolExecutor = FileQueue.javaScheduledThreadExecutor("cleanFileThread");
+    /**
+     * 文件退出offset
+     */
     static final int EXIST_FILE_OFFSET = 44;
     /**
      * 当前写的最大的offset
@@ -118,6 +126,7 @@ public class Production<E> {
         this.topic = topic;
         initFile(topic);
         MappedByteBufferUtil.putIntToBuffer(isStart, 1);
+        cleanThread();
     }
 
     private void initFile(String topic) throws IOException {
@@ -352,6 +361,125 @@ public class Production<E> {
         return existFile;
     }
 
+    /**
+     * 清理文件线程
+     */
+    private void cleanThread() {
+        int period = 24 * 60 * 60 * 1000;
+        Date offset = DateUtil.offset(new Date(), 1);
+        try {
+            Date parse = DateUtil.parse(DateUtil.dateToStr(offset, DateUtil.DateStyle.YYYY_MM_DD) + " 03:00:00");
+            long initialDelay = parse.getTime() - System.currentTimeMillis();
+            cleanPoolExecutor.scheduleAtFixedRate(this::cleanFile, 1000, 10 * 1000, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            logger.error("定时清理文件线程异常:", e);
+        }
+    }
 
+    private void cleanFile() {
+        try {
+            cleanFileByType(FileQueue.FileType.LOG);
+            cleanFileByType(FileQueue.FileType.OFFSET_LIST);
+        } catch (Exception e) {
+            logger.error("清除线程异常:", e);
+        }
+    }
+
+    private void cleanFileByType(FileQueue.FileType fileType){
+        String path = this.path + File.separator + topic;
+        File file = new File(path);
+        File[] files = file.listFiles((dir, name) -> name.endsWith(fileType.name));
+        int fileNumber = 2;
+        if (files == null || files.length < fileNumber) {
+            return;
+        }
+        Arrays.sort(files, Comparator.comparingLong(f -> Long.parseLong(f.getName().substring(0, MappedByteBufferUtil.NAME_LEN))));
+        for (int i = 0; i < files.length - fileNumber; i++) {
+            delFile(files[i]);
+        }
+    }
+
+    /**
+     * 删除已消费文件
+     * @param file 文件
+     */
+    private void delFile(File file) {
+        String name = file.getName();
+        name = name.substring(0, name.lastIndexOf("."));
+        try {
+            if (!isCanDel(name)) {
+                logger.info("此文件还未消费,不予许删除,文件名:" + file.getName());
+                return;
+            }
+        } catch (IOException e) {
+            logger.error("判断文件是否可以删除异常,文件名:{}", file.getName(), e);
+            return;
+        }
+        if (file.exists()) {
+            if (!file.delete()) {
+                logger.warn("删除文件失败,文件路径:" + path  + ",文件名:" + file.getName());
+            }
+            logger.info("删除文件路径:" + path + ",文件名:" + file.getName());
+            removeExistFile(name);
+        }
+    }
+
+    /**
+     * 判断文件是否消费完
+     * 如果都消费完就可以删除
+     * @param name 最小offset
+     * @return true可以删除
+     * @throws IOException 异常
+     */
+    private boolean isCanDel(String name) throws IOException {
+        List<String> readFile = getReadFile();
+        if (readFile == null || readFile.size() < 1) {
+            return false;
+        }
+        for (String fileName : readFile) {
+            try (RandomAccessFile accessReadOffset = new RandomAccessFile(path + File.separator + topic +
+                    File.separator + fileName, "rw"); FileChannel fileChannelReadOffset = accessReadOffset.getChannel();) {
+                MappedByteBuffer hasReadFileSize = fileChannelReadOffset.map(FileChannel.MapMode.READ_WRITE, 16, 8);
+                long aLong = hasReadFileSize.getLong();
+                MappedByteBufferUtil.clean(hasReadFileSize);
+                if (aLong < Long.parseLong(name)) {
+                    logger.info("当前主题未消费完,主题名称:{},未消费完的消费组名称:{}", topic, fileName.substring(0, fileName.lastIndexOf(".")));
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 获取所有消费组文件名称
+     * @return
+     */
+    private List<String> getReadFile() {
+        File[] files = new File(this.path + File.separator + this.topic).listFiles(new FileFilter() {
+            @Override
+            public boolean accept(File pathname) {
+                return pathname.getName().endsWith(FileQueue.FileType.READ.name);
+            }
+        });
+        if (files == null || files.length < 1) {
+            return null;
+        }
+        List<String> names = new ArrayList<>();
+        for (File file : files) {
+            names.add(file.getName());
+        }
+        return names;
+    }
+
+    private void removeExistFile(String name) {
+        ReentrantLock writeLock = this.writeLock;
+        try {
+            writeLock.lock();
+            existFile.remove(Long.parseLong(name));
+        } finally {
+            writeLock.unlock();
+        }
+    }
 
 }
