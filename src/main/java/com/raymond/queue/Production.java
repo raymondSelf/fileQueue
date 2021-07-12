@@ -278,7 +278,7 @@ public class Production<E> {
             offsetListWriteGrow();
         }
         bufWriteOffsetList.putLong(offset);
-        writeOffset.addAndGet(bytes.length);
+        writeOffset.set(offset);
         writeOffset();
         writeIndex();
     }
@@ -370,7 +370,7 @@ public class Production<E> {
         try {
             Date parse = DateUtil.parse(DateUtil.dateToStr(offset, DateUtil.DateStyle.YYYY_MM_DD) + " 03:00:00");
             long initialDelay = parse.getTime() - System.currentTimeMillis();
-            cleanPoolExecutor.scheduleAtFixedRate(this::cleanFile, 1000, 10 * 1000, TimeUnit.MILLISECONDS);
+            cleanPoolExecutor.scheduleAtFixedRate(this::cleanFile, initialDelay, period, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             logger.error("定时清理文件线程异常:", e);
         }
