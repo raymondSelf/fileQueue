@@ -385,10 +385,6 @@ public class FileQueue<E> {
             }
             Consumption<E> eConsumption = createConsumption(eClass, this.path, topic, groupName, this, growMode, srcGroupName);
             groupMap.put(groupName, eConsumption);
-            RandomAccessFile accessReadOffset = new RandomAccessFile(path + File.separator + topic +
-                    File.separator + groupName + FileType.READ.name, "rw");
-            FileChannel fileChannelReadOffset = accessReadOffset.getChannel();
-            MappedByteBuffer hasReadFileSize = fileChannelReadOffset.map(FileChannel.MapMode.READ_WRITE, 16, 8);
             return eConsumption;
         }
     }
