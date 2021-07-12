@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
@@ -341,11 +342,7 @@ public class Consumption<E> {
                     .map(FileChannel.MapMode.READ_WRITE, readOffset.get() - hasReadFileSize,
                     readFileSize - readOffset.get());
             mappedByteBufferMap.put(readLogKey + ":" + topic, bufReadLog);
-            try {
-                Thread.sleep(2000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+
             //获取未读的offset集合
             readIndex = MappedByteBufferUtil.getIndex(this.path, topic, readOffset.get());
             long writeIndexIndex = writeFile.getWriteIndex();
@@ -385,16 +382,12 @@ public class Consumption<E> {
      * 32-35代表文件是否启动,0:未启动,1:启动
      * 36-44代表文件的心跳时间,最后一次更新心跳时间
      */
-    private void createReadFile(String topic, String groupName) {
-        try {
-            String path = this.path + File.separator + topic;
-            RandomAccessFile accessReadOffset= new RandomAccessFile(path + File.separator + groupName + FileQueue.FileType.READ.name, "rw");
-            FileChannel fileChannelReadOffset = accessReadOffset.getChannel();
-            randomAccessFileMap.put(readKey + ":" + topic, accessReadOffset);
-            fileChannelMap.put(readKey + ":" + topic, fileChannelReadOffset);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+    private void createReadFile(String topic, String groupName) throws FileNotFoundException {
+        String path = this.path + File.separator + topic;
+        RandomAccessFile accessReadOffset= new RandomAccessFile(path + File.separator + groupName + FileQueue.FileType.READ.name, "rw");
+        FileChannel fileChannelReadOffset = accessReadOffset.getChannel();
+        randomAccessFileMap.put(readKey + ":" + topic, accessReadOffset);
+        fileChannelMap.put(readKey + ":" + topic, fileChannelReadOffset);
     }
 
     /**
@@ -421,7 +414,7 @@ public class Consumption<E> {
             randomAccessFileMap.put(key, accessFileLog);
             fileChannelMap.put(key, fileChannelLog);
         } catch (Exception e) {
-            e.printStackTrace();
+            new RuntimeException("创建读取日志文件映射地址异常", e);
         }
     }
 
@@ -489,12 +482,12 @@ public class Consumption<E> {
             fileGrow(topic, false, readOffsetListLong, readLogKey, FileQueue.FileType.LOG);
             bufReadLog = fileChannelMap.get(readLogKey + ":" + topic)
                     .map(FileChannel.MapMode.READ_WRITE, 0, MappedByteBufferUtil.FILE_SIZE);
+            mappedByteBufferMap.put(readLogKey + ":" + topic, bufReadLog);
             readFileSize = MappedByteBufferUtil.FILE_SIZE + readOffset.get();
             MappedByteBufferUtil.putLongToBuffer(hasReadFileSizeMap, readOffset.get());
             MappedByteBufferUtil.putLongToBuffer(readFileSizeMap, readFileSize);
         } catch (IOException e) {
-            e.printStackTrace();
-            throw new RuntimeException("数据已满，创建新的文件失败");
+            throw new RuntimeException("数据已满，创建新的文件失败", e);
         }
     }
 
@@ -503,6 +496,7 @@ public class Consumption<E> {
             fileGrow(topic, false, readOffset.get(), readOffsetListKey, FileQueue.FileType.OFFSET_LIST);
             bufReadOffsetList = fileChannelMap.get(readOffsetListKey + ":" + topic)
                     .map(FileChannel.MapMode.READ_WRITE, 0, MappedByteBufferUtil.FILE_SIZE);
+            mappedByteBufferMap.put(readOffsetListKey + ":" + topic, bufReadOffsetList);
             readOffsetSize += offsetSize;
             MappedByteBufferUtil.putLongToBuffer(hasReadIndexMap, readIndex);
         } catch (Exception e) {
@@ -511,12 +505,8 @@ public class Consumption<E> {
     }
 
     private void readOffset() {
-        try {
-            bufReadOffset.flip();
-            bufReadOffset.putLong(readOffset.get());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        bufReadOffset.flip();
+        bufReadOffset.putLong(readOffset.get());
     }
 
     public long getReadIndex() {

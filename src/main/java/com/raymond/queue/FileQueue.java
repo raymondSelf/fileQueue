@@ -540,7 +540,6 @@ public class FileQueue<E> {
     }
 
     private void cleanFileByType(FileType fileType){
-        System.gc();
         String path = this.path + File.separator + topic;
         File file = new File(path);
         File[] files = file.listFiles((dir, name) -> name.endsWith(fileType.name));

@@ -1,11 +1,11 @@
 package com.raymond.queue;
 
 import com.dyuproject.protostuff.LinkedBuffer;
-import com.raymond.queue.collection.CollectionEntry;
 import com.raymond.queue.utils.MappedByteBufferUtil;
 import com.raymond.queue.utils.ProtostuffUtils;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
@@ -196,16 +196,12 @@ public class Production<E> {
      * 32-35代表文件是否启动,0:未启动,1:启动
      * 36-44代表文件的心跳时间,最后一次更新心跳时间
      */
-    private void createWriteFile(String topic) {
-        try {
-            String path = this.path + File.separator + topic;
-            RandomAccessFile accessWriteOffset= new RandomAccessFile(path + File.separator + "queue" + FileQueue.FileType.WRITE.name, "rw");
-            FileChannel fileChannelWriteOffset = accessWriteOffset.getChannel();
-            randomAccessFileMap.put(writeKey + ":" + topic, accessWriteOffset);
-            fileChannelMap.put(writeKey + ":" + topic, fileChannelWriteOffset);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+    private void createWriteFile(String topic) throws FileNotFoundException {
+        String path = this.path + File.separator + topic;
+        RandomAccessFile accessWriteOffset= new RandomAccessFile(path + File.separator + "queue" + FileQueue.FileType.WRITE.name, "rw");
+        FileChannel fileChannelWriteOffset = accessWriteOffset.getChannel();
+        randomAccessFileMap.put(writeKey + ":" + topic, accessWriteOffset);
+        fileChannelMap.put(writeKey + ":" + topic, fileChannelWriteOffset);
     }
 
     /**
@@ -238,7 +234,7 @@ public class Production<E> {
             randomAccessFileMap.put(key, accessFileLog);
             fileChannelMap.put(key, fileChannelLog);
         } catch (Exception e) {
-            e.printStackTrace();
+            throw new RuntimeException("创建读取日志文件映射地址异常", e);
         }
     }
 
@@ -272,7 +268,8 @@ public class Production<E> {
         if(writeIndex.incrementAndGet() > writeOffsetListIndex) {
             offsetListWriteGrow();
         }
-        bufWriteOffsetList.putLong(writeOffset.addAndGet(bytes.length));
+        bufWriteOffsetList.putLong(offset);
+        writeOffset.addAndGet(bytes.length);
         writeOffset();
         writeIndex();
     }
@@ -285,6 +282,7 @@ public class Production<E> {
         try {
             fileGrow(topic, false, true, writeOffset.get(), writeLogKey, FileQueue.FileType.LOG);
             bufWriteLog = fileChannelMap.get(writeLogKey + ":" + topic).map(FileChannel.MapMode.READ_WRITE, 0, fileSize);
+            mappedByteBufferMap.put(writeLogKey + ":" + topic, bufWriteLog);
             writeFileSize = fileSize + writeOffset.get();
             MappedByteBufferUtil.putLongToBuffer(writtenFileSizeMap, writeOffset.get());
             MappedByteBufferUtil.putLongToBuffer(writeFileSizeMap, writeFileSize);
@@ -300,6 +298,7 @@ public class Production<E> {
         try {
             fileGrow(topic, false, true, writeOffset.get(), writeOffsetListKey, FileQueue.FileType.OFFSET_LIST);
             bufWriteOffsetList = fileChannelMap.get(writeOffsetListKey + ":" + topic).map(FileChannel.MapMode.READ_WRITE, 0, fileSize);
+            mappedByteBufferMap.put(writeOffsetListKey + ":" + topic, bufWriteOffsetList);
             writeOffsetListIndex += offsetSize;
             existFile.put(writeOffset.get(), writeIndex.get() - 1);
             existFilePersistence();
@@ -310,21 +309,13 @@ public class Production<E> {
 
 
     private void writeOffset() {
-        try {
-            bufWriteOffset.flip();
-            bufWriteOffset.putLong(writeOffset.get());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        bufWriteOffset.flip();
+        bufWriteOffset.putLong(writeOffset.get());
     }
 
     private void writeIndex() {
-        try {
-            bufWriteIndex.flip();
-            bufWriteIndex.putLong(writeIndex.get());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        bufWriteIndex.flip();
+        bufWriteIndex.putLong(writeIndex.get());
     }
 
     private void existFilePersistence() throws IOException {
