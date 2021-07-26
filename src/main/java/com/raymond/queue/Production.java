@@ -54,7 +54,7 @@ public class Production<E> {
 
     private final String path;
 
-    private final String topic;
+    protected final String topic;
 
     private final Map<String, RandomAccessFile> randomAccessFileMap = new HashMap<>();
 
@@ -84,7 +84,7 @@ public class Production<E> {
     /**
      * 写文件
      */
-    private MappedByteBuffer bufWriteLog;
+    protected MappedByteBuffer bufWriteLog;
 
     /**
      * log文件倒数第二个文件的最大的offset
@@ -94,7 +94,7 @@ public class Production<E> {
     /**
      * 写的每条offset集合
      */
-    private MappedByteBuffer bufWriteOffsetList;
+    protected MappedByteBuffer bufWriteOffsetList;
     /**
      * 最大的offset
      */
@@ -248,12 +248,14 @@ public class Production<E> {
     }
 
     public void put(E e) {
+        put(getBytes(e));
+    }
+
+    public void put(byte[] bytes) {
         final ReentrantLock lock = this.writeLock;
         lock.lock();
         try {
-//            log(JSONObject.toJSONString(e).getBytes());
-//            log(ProtostuffUtils.serializer(e, buffer));
-            log(getBytes(e));
+            log(bytes);
         } finally {
             lock.unlock();
         }
@@ -287,7 +289,7 @@ public class Production<E> {
     /**
      * 写日志扩容
      */
-    private void logWriteGrow() {
+    protected void logWriteGrow() {
         try {
             fileGrow(topic, false, true, writeOffset.get(), writeLogKey, FileQueue.FileType.LOG);
             bufWriteLog = fileChannelMap.get(writeLogKey + ":" + topic).map(FileChannel.MapMode.READ_WRITE, 0, fileSize);
@@ -303,7 +305,7 @@ public class Production<E> {
     /**
      * 索引文件扩容
      */
-    private void offsetListWriteGrow() {
+    protected void offsetListWriteGrow() {
         try {
             fileGrow(topic, false, true, writeOffset.get(), writeOffsetListKey, FileQueue.FileType.OFFSET_LIST);
             bufWriteOffsetList = fileChannelMap.get(writeOffsetListKey + ":" + topic).map(FileChannel.MapMode.READ_WRITE, 0, fileSize);

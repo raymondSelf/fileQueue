@@ -419,20 +419,14 @@ public class Consumption<E> {
     }
 
     public E poll() {
-        final ReentrantLock lock = this.readLock;
-        lock.lock();
-        try {
-            E e = pollFirst();
-            if (e != null) {
-                readOffset();
-            }
-            return e;
-        } finally {
-            lock.unlock();
+        byte[] bytes = pollBytes();
+        if (bytes == null) {
+            return null;
         }
+        return getData(bytes);
     }
 
-    private E pollFirst() {
+    private byte[] pollFirst() {
         if (readOffset.get() >= writeOffset.get()) {
             setWriteOffset();
             if (readOffset.get() >= writeOffset.get()) {
@@ -451,9 +445,22 @@ public class Consumption<E> {
         byte[] bytes = new byte[len];
         bufReadLog.get(bytes, 0, len);
         readOffset.addAndGet(len);
-//        return JSONObject.parseObject(bytes, eClass);
-//        return ProtostuffUtils.deserializer(bytes, eClass);
-        return getData(bytes);
+        return bytes;
+    }
+
+
+    public byte[] pollBytes() {
+        final ReentrantLock lock = this.readLock;
+        lock.lock();
+        try {
+            byte[] bytes = pollFirst();
+            if (bytes != null) {
+                readOffset();
+            }
+            return bytes;
+        } finally {
+            lock.unlock();
+        }
     }
 
     private void setWriteOffset() {
