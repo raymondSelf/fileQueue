@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -23,6 +24,8 @@ public class RealTimeProduction<E> extends Production<E> {
 
     private List<Object> commitQueue = new ArrayList<>();
 
+    private AtomicInteger commitCount = new AtomicInteger();
+
     private final ReentrantLock commitLock = new ReentrantLock();
 
     protected RealTimeProduction(String path, String topic) throws IOException {
@@ -34,10 +37,10 @@ public class RealTimeProduction<E> extends Production<E> {
         new Thread(() -> {
             while (true) {
                 try {
-                    if (commitQueue.isEmpty()) {
+                    if (commitCount.get() == 0) {
                         wait0();
                     }
-                    commitQueue.clear();
+                    commitCount.set(0);
                     force();
                 } catch (InterruptedException e) {
                     logger.error("刷盘异常：", e);
@@ -51,7 +54,7 @@ public class RealTimeProduction<E> extends Production<E> {
     }
 
     private synchronized void notifyAll0() {
-        commitQueue.add(object);
+        commitCount.incrementAndGet();
         notifyAll();
     }
 
