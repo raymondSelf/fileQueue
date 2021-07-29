@@ -248,7 +248,13 @@ public class Production<E> {
     }
 
     public void put(E e) {
-        put(getBytes(e));
+        final ReentrantLock lock = this.writeLock;
+        lock.lock();
+        try {
+            log(getBytes(e));
+        } finally {
+            lock.unlock();
+        }
     }
 
     public void put(byte[] bytes) {

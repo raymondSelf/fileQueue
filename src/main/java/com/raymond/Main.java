@@ -1,6 +1,5 @@
 package com.raymond;
 
-import cn.hutool.core.util.StrUtil;
 import com.alibaba.fastjson.JSONObject;
 import com.raymond.queue.Consumption;
 import com.raymond.queue.FileQueue;
