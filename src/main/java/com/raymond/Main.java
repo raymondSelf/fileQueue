@@ -42,6 +42,7 @@ public class Main {
 //        Thread.sleep(Integer.MAX_VALUE);
 //        ordinary();
         subscribe();
+        Thread.sleep(Integer.MAX_VALUE);
     }
 
     private static void ordinary() throws Exception {
@@ -49,7 +50,7 @@ public class Main {
     }
 
     private static void subscribe() throws Exception {
-        subscribeTest2();
+        subscribeTest1();
     }
 
     /**
@@ -147,7 +148,7 @@ public class Main {
                 }
 
                 long end = System.currentTimeMillis();
-                System.out.println("生产:" + count + "条,数据耗时:" + (end - start) + "毫秒");
+                System.out.println("ordinary生产:" + count + "条,数据耗时:" + (end - start) + "毫秒");
                 countDownLatch.countDown();
             }).start();
         }
@@ -203,10 +204,12 @@ public class Main {
     private static void subscribeTest1() throws Exception {
         FileQueue<Test> subscribe = FileQueue.subscribe(Test.class, "subscribe", "test1");
         Production<Test> production = subscribe.getProduction();
+
         int count = 10000000;
         long start = System.currentTimeMillis();
         for (int i = 0; i < count; i++) {
             production.put(new Test("name" + i));
+//            JSONObject.toJSONString(new Test("name" + i));
         }
         long end = System.currentTimeMillis();
         System.out.println("subscribe,生产:" + count + "条,数据耗时:" + (end - start) + "毫秒");
@@ -214,6 +217,9 @@ public class Main {
         int i = 0;
         start = System.currentTimeMillis();
         while (test1.poll() != null) {
+//            if (i > 200000) {
+//                break;
+//            }
             i ++;
         }
         end = System.currentTimeMillis();
@@ -239,7 +245,7 @@ public class Main {
         for (int i = 0; i < 5; i++) {
             final int a = i;
             new Thread(() -> {
-                int count = 2000000;
+                int count = 10000000;
                 long start = System.currentTimeMillis();
                 try {
                     for (int j = 0; j < count; j++) {
@@ -249,7 +255,7 @@ public class Main {
                     e.printStackTrace();
                 }
                 long end = System.currentTimeMillis();
-                System.out.println("生产:" + count + "条,数据耗时:" + (end - start) + "毫秒");
+                System.out.println("subscribe生产:" + count + "条,数据耗时:" + (end - start) + "毫秒");
                 countDownLatch.countDown();
             }).start();
         }
@@ -298,6 +304,25 @@ public class Main {
         }
     }
 
+
+    /**
+     * 测试发布订阅队列性能
+     * @throws Exception 异常
+     */
+    private static void subscribeTest3() throws Exception {
+//        FileQueue<Test> subscribe = FileQueue.subscribe(Test.class, "subscribe", "test1");
+        FileQueue<Test> subscribe = FileQueueBuilder.create(Test.class, "subscribe").setType(1)
+                .setQueueModel(FileQueue.QueueModel.SUBSCRIBE).build();
+        Production<Test> production = subscribe.createProduction();
+        int count = 10000000;
+        long start = System.currentTimeMillis();
+        for (int i = 0; i < count; i++) {
+            production.put(new Test("name" + i));
+        }
+        long end = System.currentTimeMillis();
+        System.out.println("subscribe,生产:" + count + "条,数据耗时:" + (end - start) + "毫秒");
+
+    }
 
 
     private static void test3() throws Exception {
@@ -360,7 +385,7 @@ public class Main {
             fileQueue.put(map);
         }
         System.out.println(System.currentTimeMillis() - start);
-        Map<String, Test2> test;
+        Map<String, Test> test;
         int i = 0;
         start = System.currentTimeMillis();
 //        while ((test = test1.poll()) != null) {
@@ -437,7 +462,7 @@ public class Main {
     private static void test4() throws Exception {
         FileQueue<Test> fileQueue = FileQueueBuilder.create(Test.class, "test").setType(FileQueue.IS_ALL).setGroupName("test")
                 .setQueueModel(FileQueue.QueueModel.SUBSCRIBE).build();
-        SnowFlake instance = SnowFlake.getInstance(1, 1);
+
         List<Test> tests = new ArrayList<>(10000000);
         BlockingQueue<Test> queue = new LinkedBlockingQueue<>();
         int count = 10000000;
