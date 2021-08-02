@@ -28,7 +28,9 @@
 #### 使用说明
 
 1.  普通队列模式使用
-    ` FileQueue<Test> testFilePlusQueue = FileQueue.ordinary(Test.class, "ordinary");
+     
+      	
+        FileQueue<Test> testFilePlusQueue = FileQueue.ordinary(Test.class, "ordinary");
         Production<Test> production = testFilePlusQueue.getProduction();
         int count = 10000000;
         long start = System.currentTimeMillis();
@@ -44,12 +46,12 @@
             i ++;
         }
         end = System.currentTimeMillis();
-        System.out.println("消费:" + i + "条,数据耗时:" + (end - start) + "毫秒");`
+        System.out.println("消费:" + i + "条,数据耗时:" + (end - start) + "毫秒");
 
 2.  发布订阅模式使用
-    `FileQueue<Test> subscribe = FileQueue.subscribe(Test.class, "subscribe", "test1");
-        Production<Test> production = subscribe.getProduction();
 
+        FileQueue<Test> subscribe = FileQueue.subscribe(Test.class, "subscribe", "test1");
+        Production<Test> production = subscribe.getProduction();
         int count = 10000000;
         long start = System.currentTimeMillis();
         for (int i = 0; i < count; i++) {
@@ -72,10 +74,11 @@
             i ++;
         }
         end = System.currentTimeMillis();
-        System.out.println("test2消费:" + i + "条,数据耗时:" + (end - start) + "毫秒");`
+        System.out.println("test2消费:" + i + "条,数据耗时:" + (end - start) + "毫秒");
 
 3.  可以通过构建者模式构建
-    `FileQueue<Test> fileQueue = FileQueueBuilder.create(Test.class, "test").setType(FileQueue.IS_ALL).setGroupName("test")
+        
+        FileQueue<Test> fileQueue = FileQueueBuilder.create(Test.class, "test").setType(FileQueue.IS_ALL).setGroupName("test")
                 .setQueueModel(FileQueue.QueueModel.SUBSCRIBE).build();
         Production<Test> production = fileQueue.getProduction();
         int count = 10000000;
@@ -100,5 +103,5 @@
             i ++;
         }
         end = System.currentTimeMillis();
-        System.out.println("test2消费:" + i + "条,数据耗时:" + (end - start) + "毫秒");`
+        System.out.println("test2消费:" + i + "条,数据耗时:" + (end - start) + "毫秒");
 
