@@ -4,8 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -16,13 +14,11 @@ import java.util.concurrent.locks.ReentrantLock;
  * @version :  V1.0
  * @date :  2021-07-26 17:11
  */
+@SuppressWarnings("all")
 public class RealTimeProduction<E> extends Production<E> {
 
     private final static Logger logger = LoggerFactory.getLogger(FileQueue.class);
 
-    private Object object = new Object();
-
-    private List<Object> commitQueue = new ArrayList<>();
 
     private AtomicInteger commitCount = new AtomicInteger();
 
@@ -41,7 +37,7 @@ public class RealTimeProduction<E> extends Production<E> {
                         wait0();
                     }
                     commitCount.set(0);
-                    force();
+                    force0();
                 } catch (InterruptedException e) {
                     logger.error("刷盘异常：", e);
                 }
@@ -58,7 +54,7 @@ public class RealTimeProduction<E> extends Production<E> {
         notifyAll();
     }
 
-    private void force() {
+    private void force0() {
         ReentrantLock commitLock = this.commitLock;
         commitLock.lock();
         try {

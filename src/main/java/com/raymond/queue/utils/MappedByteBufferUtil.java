@@ -24,7 +24,7 @@ public class MappedByteBufferUtil {
 
     public static final long FILE_SIZE = 1024 * 1024 * 1024;
 
-    /**
+      /**
      * 文件名长度
      */
     public static final int NAME_LEN = 19;
@@ -80,6 +80,7 @@ public class MappedByteBufferUtil {
             if (offsetRead == 0 || offsetRead > readOffset) {
                 return 0;
             }
+
             return getReadIndex(readOffset, 0, FILE_SIZE / 8, fileChannelOffsetList) + 1;
         }  finally {
             if (fileChannelOffsetList != null) {

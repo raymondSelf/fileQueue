@@ -44,11 +44,7 @@ public class FileQueue<E> {
      * 生产消费都支持,并在初始化时就创建一个生产者和消费者
      */
     public static final int IS_ALL = 3;
-    /**
-     * 生产者和消费都不创建
-     * 需要自己后面创建
-     */
-    public static final int IS_LAZY = 0;
+
 
     private static final ScheduledThreadPoolExecutor heartbeatPoolExecutor = javaScheduledThreadExecutor("heartbeatThread");
 
@@ -205,7 +201,6 @@ public class FileQueue<E> {
             logger.error("存入心跳时间异常,topic:{}", fileQueue.topic, e);
         }
 
-
     }
 
     private static <T> FileQueue<T> existence(String key, Class<T> eClass, String topic, String groupName,
@@ -260,6 +255,9 @@ public class FileQueue<E> {
         if (isCollect) {
             return new CollectProduction<>(path, topic);
         }
+        if (openConsumption) {
+            return new BlockingProduction<>(path, topic);
+        }
         return new Production<>(path, topic);
     }
 
@@ -268,7 +266,10 @@ public class FileQueue<E> {
         if (isCollect) {
             return new CollectConsumption(eClass, path, topic, groupName, this, growMode, srcGroupName);
         }
-        return new Consumption<>(eClass, path, topic, groupName, this, growMode, srcGroupName);
+        if (openProduction) {
+            return new BlockingConsumption<>(eClass, path, topic, groupName, this, growMode, srcGroupName);
+        }
+        return new MultipleProcessesConsumption<>(eClass, path, topic, groupName, this, growMode, srcGroupName);
     }
 
 
@@ -368,9 +369,6 @@ public class FileQueue<E> {
 
     private Consumption<E> createConsumption(String groupName, GrowMode growMode, String srcGroupName) throws Exception {
         synchronized (this) {
-            if (this.type == FileQueue.IS_LAZY) {
-                openConsumption = true;
-            }
             if (!openConsumption) {
                 throw new RuntimeException("没有开启消费者,不支持创建消费组");
             }

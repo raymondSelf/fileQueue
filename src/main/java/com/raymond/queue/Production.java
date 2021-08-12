@@ -369,6 +369,17 @@ public class Production<E> {
         return existFile;
     }
 
+    public void force() {
+        ReentrantLock writeLock = this.writeLock;
+        writeLock.lock();
+        try {
+            bufWriteLog.force();
+            bufWriteOffsetList.force();
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
     /**
      * 清理文件线程
      */
@@ -489,5 +500,7 @@ public class Production<E> {
             writeLock.unlock();
         }
     }
+
+
 
 }

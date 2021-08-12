@@ -1,6 +1,6 @@
 package com.raymond.queue.basis;
 
-import com.raymond.queue.Production;
+import com.raymond.queue.BlockingProduction;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -12,7 +12,7 @@ import java.nio.charset.Charset;
  * @version :  V1.0
  * @date :  2021-01-21 17:31
  */
-public class ProductionStr extends Production<String> {
+public class ProductionStr extends BlockingProduction<String> {
 
     public ProductionStr(String path, String topic) throws IOException {
         super(path, topic);

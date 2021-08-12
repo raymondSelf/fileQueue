@@ -1,11 +1,8 @@
 package com.raymond.queue.collection;
 
-import com.raymond.queue.Consumption;
+import com.raymond.queue.BlockingConsumption;
 import com.raymond.queue.FileQueue;
 import com.raymond.queue.utils.ProtostuffUtils;
-
-import java.lang.reflect.TypeVariable;
-import java.util.List;
 
 /**
  * 集合对象的消费者
@@ -15,7 +12,7 @@ import java.util.List;
  * @date :  2021-01-21 17:31
  */
 @SuppressWarnings("all")
-public class CollectConsumption<E> extends Consumption<E> {
+public class CollectConsumption<E> extends BlockingConsumption<E> {
 
 
     public CollectConsumption(Class<E> eClass, String path, String topic, String groupName, FileQueue<E> fileQueue, FileQueue.GrowMode growMode, String srcGroupName) throws Exception {

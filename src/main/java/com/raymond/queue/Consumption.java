@@ -27,24 +27,18 @@ import java.util.concurrent.locks.ReentrantLock;
  * @date :  2021-01-11 10:41
  */
 @SuppressWarnings("all")
-public class Consumption<E> {
+public abstract class Consumption<E> {
     private final static Logger logger = LoggerFactory.getLogger(Consumption.class);
     /**
      * 读的offset
      */
-    private AtomicLong readOffset = new AtomicLong();
-    /**
-     * 当前写的最大的offset
-     */
-    private final AtomicLong writeOffset;
+    protected AtomicLong readOffset = new AtomicLong();
+
     /**
      * 文件队列信息
      */
-    private final FileQueue<E> fileQueue;
-    /**
-     * 生产者信息
-     */
-    private WriteFile writeFile;
+    protected final FileQueue<E> fileQueue;
+
     /**
      * 类型
      */
@@ -125,13 +119,9 @@ public class Consumption<E> {
     /** 读锁 **/
     private final ReentrantLock readLock = new ReentrantLock();
 
-    Consumption(Class<E> eClass, String path, String topic, String groupName, FileQueue<E> fileQueue,
-                FileQueue.GrowMode growMode) throws Exception {
-        this(eClass, path, topic, groupName, fileQueue, growMode, "");
-    }
 
-    protected Consumption(Class<E> eClass, String path, String topic, String groupName, FileQueue<E> fileQueue,
-                          FileQueue.GrowMode growMode, String srcGroupName) throws Exception {
+
+    protected Consumption(Class<E> eClass, String path, String topic, String groupName, FileQueue<E> fileQueue) throws Exception {
         if (MappedByteBufferUtil.isStrEmpty(groupName)) {
             throw new RuntimeException("消费组的名称不能为空,请输入消费组的名称");
         }
@@ -142,8 +132,9 @@ public class Consumption<E> {
         this.path = path;
         this.topic = topic;
         this.fileQueue = fileQueue;
-        this.writeFile = new WriteFile(fileQueue.getProduction(), path, topic);
-        this.writeOffset = writeFile.getWriteOffset();
+    }
+
+    protected void createFile(String groupName, FileQueue.GrowMode growMode, String srcGroupName) throws Exception {
 
         if (growMode == FileQueue.GrowMode.CONTINUE_OFFSET) {
             if (fileQueue.existsGroup(groupName)) {
@@ -158,7 +149,7 @@ public class Consumption<E> {
         }
         if (growMode == FileQueue.GrowMode.COPY_GROUP) {
             if (!fileQueue.existsGroup(srcGroupName)) {
-               throw new RuntimeException("来源的消费组不存在,不能够复制消费组,请选择已存在的消费组");
+                throw new RuntimeException("来源的消费组不存在,不能够复制消费组,请选择已存在的消费组");
             }
             copyGroup(srcGroupName, groupName);
             initFile(topic, groupName, true);
@@ -316,8 +307,9 @@ public class Consumption<E> {
      * @throws IOException 异常
      */
     private void growGroupLast(String topic, String groupName) throws IOException {
-        ReentrantLock writeLock = writeFile.getWriteLock();
+        ReentrantLock writeLock = getWriteLock();
         try {
+            long writeOffset = getWriteOffset().get();
             writeLock.lock();
             createReadFile(topic, groupName);
             getReadMap();
@@ -326,8 +318,8 @@ public class Consumption<E> {
             }
 
             bufReadOffset = fileChannelMap.get(readKey + ":" + topic).map(FileChannel.MapMode.READ_WRITE, 0, 8);
-            MappedByteBufferUtil.putLongToBuffer(bufReadOffset, writeOffset.get());
-            readOffset.set(writeOffset.get());
+            MappedByteBufferUtil.putLongToBuffer(bufReadOffset, writeOffset);
+            readOffset.set(writeOffset);
 
             //获取未读的数据
             fileGrow(topic, true, readOffset.get(), readLogKey, FileQueue.FileType.LOG);
@@ -345,7 +337,7 @@ public class Consumption<E> {
 
             //获取未读的offset集合
             readIndex = MappedByteBufferUtil.getIndex(this.path, topic, readOffset.get());
-            long writeIndexIndex = writeFile.getWriteIndex();
+            long writeIndexIndex = getWriteIndex();
             fileGrow(topic, true, readOffset.get(), readOffsetListKey, FileQueue.FileType.OFFSET_LIST);
             bufReadOffsetList = fileChannelMap.get(readOffsetListKey + ":" + topic).map(FileChannel.MapMode.READ_ONLY, readIndex * 8,
                     MappedByteBufferUtil.FILE_SIZE - readIndex * 8);
@@ -356,17 +348,6 @@ public class Consumption<E> {
             readOffsetSize = (readIndex / this.offsetSize + 1) * this.offsetSize;
             mappedByteBufferMap.put(readOffsetListKey + ":" + topic, bufReadOffsetList);
 
-
-//            readIndex = writeFile.getWriteIndex();
-//            long cuindex = MappedByteBufferUtil.getIndex(this.path, topic, readOffset.get());
-//            fileGrow(topic, true, readOffset.get(), readOffsetListKey, FileQueue.FileType.OFFSET_LIST);
-//            bufReadOffsetList = fileChannelMap.get(readOffsetListKey + ":" + topic).map(FileChannel.MapMode.READ_ONLY, readIndex % this.offsetSize * 8,
-//                    MappedByteBufferUtil.FILE_SIZE - readIndex % this.offsetSize * 8);
-//
-//            readOffsetSize = (readIndex / this.offsetSize + 1) * this.offsetSize;
-//            mappedByteBufferMap.put(readOffsetListKey + ":" + topic, bufReadOffsetList);
-//            hasReadIndexMap = fileChannelMap.get(readKey + ":" + topic).map(FileChannel.MapMode.READ_WRITE, 24, 8);
-//            MappedByteBufferUtil.putLongToBuffer(hasReadIndexMap, readIndex / this.offsetSize * this.offsetSize);
         } finally {
             writeLock.unlock();
         }
@@ -427,11 +408,8 @@ public class Consumption<E> {
     }
 
     private byte[] pollFirst() {
-        if (readOffset.get() >= writeOffset.get()) {
-            setWriteOffset();
-            if (readOffset.get() >= writeOffset.get()) {
-                return null;
-            }
+        if (!isRead()) {
+            return null;
         }
         if (readIndex >= readOffsetSize) {
             offsetListReadGrow();
@@ -463,18 +441,7 @@ public class Consumption<E> {
         }
     }
 
-    private void setWriteOffset() {
-        ReentrantLock writeLock = writeFile.getWriteLock();
-        try {
-            writeLock.lock();
-            long longFromBuffer = writeFile.getNewWriteOffset();
-            writeOffset.set(longFromBuffer);
-        } finally {
-            writeLock.unlock();
-        }
 
-
-    }
 
     protected E getData(byte[] bytes) {
         return ProtostuffUtils.deserializer(bytes, eClass);
@@ -521,7 +488,7 @@ public class Consumption<E> {
     }
 
     public long size() {
-        return writeFile.getWriteIndex() - readIndex;
+        return getWriteIndex() - readIndex;
     }
 
     /**
@@ -537,7 +504,7 @@ public class Consumption<E> {
     }
 
     private long getHasReadIndex(long offset) throws IOException {
-        Map<Long, Long> existFile = writeFile.getExistFile();
+        Map<Long, Long> existFile = getExistFile();
         List<Long> list = new ArrayList<>(existFile.keySet());
         list.sort((Comparator.comparingLong(o -> o)));
         long hasReadIndex = 0;
@@ -550,79 +517,14 @@ public class Consumption<E> {
         return hasReadIndex;
     }
 
-    class WriteFile {
+    protected abstract boolean isRead();
 
-        Production production;
+    protected abstract Map<Long, Long> getExistFile() throws IOException;
 
-        final RandomAccessFile accessWriteOffset;
+    protected abstract AtomicLong getWriteOffset();
 
-        final FileChannel fileChannelWriteOffset;
+    protected abstract long getWriteIndex();
 
-        final ReentrantLock writeLock;
-        /**
-         * 最大的offset
-         */
-        final MappedByteBuffer bufWriteOffset;
-        /**
-         * 已存最大的下标
-         */
-        final MappedByteBuffer bufWriteIndex;
-
-
-
-        WriteFile(Production production, String path, String topic) throws IOException {
-            this.production = production;
-            if (this.production == null) {
-                writeLock = new ReentrantLock();
-            } else {
-                writeLock = production.getWriteLock();
-            }
-            path = path + File.separator + topic;
-            accessWriteOffset= new RandomAccessFile(path + File.separator + "queue" + FileQueue.FileType.WRITE.name, "rw");
-            fileChannelWriteOffset = accessWriteOffset.getChannel();
-            bufWriteOffset = fileChannelWriteOffset.map(FileChannel.MapMode.READ_WRITE, 0, 8);
-            bufWriteIndex = fileChannelWriteOffset.map(FileChannel.MapMode.READ_WRITE, 8, 8);
-        }
-
-        Map<Long, Long> getExistFile() throws IOException {
-            if (this.production != null) {
-                return this.production.getExistFile();
-            }
-            Map<Long, Long> existFile = new HashMap<>();
-            MappedByteBufferUtil.getFileIndex(existFile, writeFile.fileChannelWriteOffset, Production.EXIST_FILE_OFFSET);
-            return existFile;
-        }
-        AtomicLong getWriteOffset() {
-            if (isProduction()) {
-                return this.production.getWriteOffset();
-            }
-            return new AtomicLong(MappedByteBufferUtil.getLongFromBuffer(bufWriteOffset));
-        }
-
-        ReentrantLock getWriteLock() {
-            if (isProduction()) {
-                return this.production.getWriteLock();
-            }
-            return this.writeLock;
-        }
-
-        long getWriteIndex() {
-            if (isProduction()) {
-                return this.production.getWriteIndex();
-            }
-            return MappedByteBufferUtil.getLongFromBuffer(bufWriteIndex);
-        }
-
-        long getNewWriteOffset() {
-            if (isProduction()) {
-                return this.production.getWriteOffset().get();
-            }
-            return MappedByteBufferUtil.getLongFromBuffer(bufWriteOffset);
-        }
-
-        private boolean isProduction() {
-            return (this.production = fileQueue.getProduction()) != null;
-        }
-    }
+    protected abstract ReentrantLock getWriteLock();
 
 }

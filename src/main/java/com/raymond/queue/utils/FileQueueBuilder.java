@@ -48,7 +48,7 @@ public class FileQueueBuilder<E> {
         this.topic = topic;
         this.path = FileQueue.DEFAULT_PATH;
         this.queueModel = FileQueue.QueueModel.ORDINARY;
-        this.type = FileQueue.IS_LAZY;
+        this.type = FileQueue.IS_ALL;
         this.growMode = FileQueue.GrowMode.CONTINUE_OFFSET;
         this.groupName = FileQueue.DEFAULT_GROUP;
     }

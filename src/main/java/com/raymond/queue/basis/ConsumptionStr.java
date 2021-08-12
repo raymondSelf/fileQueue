@@ -1,6 +1,6 @@
 package com.raymond.queue.basis;
 
-import com.raymond.queue.Consumption;
+import com.raymond.queue.BlockingConsumption;
 import com.raymond.queue.FileQueue;
 
 import java.nio.charset.Charset;
@@ -13,7 +13,7 @@ import java.nio.charset.Charset;
  * @date :  2021-01-21 17:31
  */
 @SuppressWarnings("all")
-public class ConsumptionStr extends Consumption<String> {
+public class ConsumptionStr extends BlockingConsumption<String> {
 
 
     public ConsumptionStr(String path, String topic, String groupName, FileQueue fileQueue, FileQueue.GrowMode growMode, String srcGroupName) throws Exception {
